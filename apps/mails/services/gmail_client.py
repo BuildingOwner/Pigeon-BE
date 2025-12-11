@@ -8,6 +8,7 @@ from email.utils import parseaddr
 
 import requests
 from django.conf import settings
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 
@@ -35,7 +36,7 @@ class GmailAPIClient:
 
         # 토큰 만료 확인 (5분 여유)
         if self.user.gmail_token_expires_at:
-            if datetime.now() > self.user.gmail_token_expires_at - timedelta(minutes=5):
+            if timezone.now() > self.user.gmail_token_expires_at - timedelta(minutes=5):
                 self._refresh_token()
 
     def _refresh_token(self):
@@ -60,7 +61,7 @@ class GmailAPIClient:
 
             # 새 토큰 저장
             self.user.gmail_access_token = token_data['access_token']
-            self.user.gmail_token_expires_at = datetime.now() + timedelta(
+            self.user.gmail_token_expires_at = timezone.now() + timedelta(
                 seconds=token_data.get('expires_in', 3600)
             )
             self.user.save(update_fields=['_gmail_access_token', 'gmail_token_expires_at'])
@@ -272,7 +273,10 @@ class GmailAPIClient:
 
         # 수신 시간 파싱 (internalDate는 밀리초 단위)
         internal_date = int(message.get('internalDate', 0))
-        received_at = datetime.fromtimestamp(internal_date / 1000)
+        received_at = timezone.make_aware(
+            datetime.fromtimestamp(internal_date / 1000),
+            timezone.get_current_timezone()
+        )
 
         return {
             'gmail_id': message.get('id'),
