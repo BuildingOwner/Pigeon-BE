@@ -1,0 +1,71 @@
+name: "🐛 Bug Report"
+description: "버그를 발견했을 때 사용"
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 버그 리포트
+        발견한 버그에 대해 상세히 설명해주세요.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 버그 설명
+      description: 어떤 버그인지 설명해주세요
+      placeholder: "로그인 후 메일 목록이 표시되지 않음"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법
+      description: 버그를 재현하는 단계
+      placeholder: |
+        1. 로그인 페이지에서 Google 로그인 클릭
+        2. OAuth 인증 완료
+        3. 메인 페이지로 이동
+        4. 메일 목록이 비어있음
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 예상 동작
+      description: 원래 어떻게 동작해야 하는지
+      placeholder: "메일 목록이 표시되어야 함"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 실제로 어떻게 동작하는지
+      placeholder: "메일 목록이 비어있음"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그/에러 메시지
+      description: 관련 로그나 에러 메시지
+      render: shell
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 심각도
+      options:
+        - Critical - 서비스 불가
+        - High - 주요 기능 장애
+        - Medium - 부분 기능 장애
+        - Low - 사소한 문제
+    validations:
+      required: true

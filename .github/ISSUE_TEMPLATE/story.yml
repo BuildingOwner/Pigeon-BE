@@ -1,0 +1,82 @@
+name: "📋 Story"
+description: "새로운 기능 개발을 위한 Story"
+title: "[Story]: "
+labels: ["story"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Story 생성
+        DOD_AEC.md를 참조하여 AEC를 작성해주세요.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 설명
+      description: Story에 대한 간단한 설명
+      placeholder: "이 Story는..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: aec
+    attributes:
+      label: AEC (인수 조건)
+      description: 이 Story가 완료되기 위해 충족해야 할 조건들
+      placeholder: |
+        - [ ] 조건 1
+        - [ ] 조건 2
+        - [ ] 조건 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      description: 구체적인 작업 항목
+      placeholder: |
+        - [ ] Task 1
+        - [ ] Task 2
+    validations:
+      required: false
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 참고 문서
+      description: 관련 문서 링크
+      placeholder: |
+        - [API_SPEC.md](../Pigeon-DOCS/docs/API_SPEC.md)
+        - [DATABASE.md](../Pigeon-DOCS/docs/DATABASE.md)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: 작업이 속한 Phase
+      options:
+        - Phase 1 - 프로젝트 초기 설정
+        - Phase 2 - 인증 시스템
+        - Phase 3 - 핵심 API
+        - Phase 4 - Gmail 동기화
+        - Phase 5 - AI 분류
+        - Phase 6 - Frontend
+        - Phase 7 - 통합/테스트
+        - Phase 8 - 배포
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 우선순위
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
