@@ -1,6 +1,8 @@
 from rest_framework import serializers
-from .models import Mail
+
 from apps.folders.serializers import FolderSerializer
+
+from .models import Mail
 
 
 class MailListSerializer(serializers.ModelSerializer):

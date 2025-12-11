@@ -5,6 +5,7 @@ Base settings shared across all environments.
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -46,6 +47,7 @@ LOCAL_APPS = [
     'apps.mails',
     'apps.folders',
     'apps.classifier',
+    'apps.sync',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

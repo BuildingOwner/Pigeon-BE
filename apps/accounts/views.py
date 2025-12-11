@@ -1,16 +1,16 @@
 from datetime import datetime, timedelta
 
 from django.shortcuts import redirect
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
 
 from .models import User
-from .serializers import UserSerializer, TokenResponseSerializer
+from .serializers import TokenResponseSerializer, UserSerializer
 from .services import GoogleOAuthService
 
 
@@ -146,18 +146,15 @@ class GoogleCallbackView(APIView):
             jwt_access_token = str(refresh.access_token)
             jwt_refresh_token = str(refresh)
 
-            # 9. 응답 반환
-            response_data = {
+            # 9. FE callback으로 리다이렉트 (토큰 포함)
+            import urllib.parse
+            fe_callback_url = 'http://localhost:3000/callback'
+            params = urllib.parse.urlencode({
                 'access_token': jwt_access_token,
                 'refresh_token': jwt_refresh_token,
                 'expires_in': int(refresh.access_token.lifetime.total_seconds()),
-                'user': UserSerializer(user).data
-            }
-
-            return Response({
-                'status': 'success',
-                'data': response_data
-            }, status=status.HTTP_200_OK)
+            })
+            return redirect(f'{fe_callback_url}?{params}')
 
         except Exception as e:
             return Response({

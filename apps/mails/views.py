@@ -1,12 +1,14 @@
 from django.db import models
-from rest_framework import viewsets, status
+from django.http import HttpResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework.response import Response
 
 from .models import Mail
-from .serializers import MailListSerializer, MailDetailSerializer, MailUpdateSerializer
+from .serializers import MailDetailSerializer, MailListSerializer, MailUpdateSerializer
+from .services import GmailAPIClient
 
 
 @extend_schema_view(
@@ -280,3 +282,69 @@ class MailViewSet(viewsets.ModelViewSet):
                 'updated_count': updated_count
             }
         })
+
+    @extend_schema(
+        summary='첨부파일 다운로드',
+        description='메일의 첨부파일을 다운로드합니다. Gmail API를 통해 실시간으로 조회합니다.',
+        tags=['메일'],
+        parameters=[
+            OpenApiParameter(
+                name='attachment_id',
+                type=str,
+                location=OpenApiParameter.PATH,
+                description='Gmail 첨부파일 ID'
+            )
+        ],
+        responses={
+            200: {
+                'description': '파일 바이너리 데이터',
+                'content': {'application/octet-stream': {}}
+            },
+            404: {'description': '첨부파일을 찾을 수 없음'}
+        }
+    )
+    @action(detail=True, methods=['get'], url_path='attachments/(?P<attachment_id>[^/.]+)')
+    def attachment(self, request, pk=None, attachment_id=None):
+        """첨부파일 다운로드"""
+        mail = self.get_object()
+
+        # 첨부파일 메타데이터 확인
+        attachment_meta = None
+        for att in mail.attachments:
+            if att.get('id') == attachment_id:
+                attachment_meta = att
+                break
+
+        if not attachment_meta:
+            return Response({
+                'status': 'error',
+                'code': 'ATTACHMENT_NOT_FOUND',
+                'message': '첨부파일을 찾을 수 없습니다.'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # Gmail API를 통해 첨부파일 데이터 조회
+            gmail_client = GmailAPIClient(request.user)
+            file_data = gmail_client.get_attachment_data(
+                mail.gmail_id,
+                attachment_id
+            )
+
+            # 파일 응답 생성
+            response = HttpResponse(
+                file_data,
+                content_type=attachment_meta.get('mimeType', 'application/octet-stream')
+            )
+            filename = attachment_meta.get('name', 'attachment')
+            # RFC 5987 인코딩으로 한글 파일명 지원
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{filename}"
+            response['Content-Length'] = len(file_data)
+
+            return response
+
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'code': 'GMAIL_API_ERROR',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

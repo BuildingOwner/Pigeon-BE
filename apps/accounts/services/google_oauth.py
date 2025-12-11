@@ -3,7 +3,6 @@ Google OAuth2 인증 서비스
 """
 import secrets
 from urllib.parse import urlencode
-from typing import Optional
 
 import requests
 from django.conf import settings
