@@ -21,6 +21,7 @@ urlpatterns = [
         path('auth/', include('apps.accounts.urls')),
         path('mails/', include('apps.mails.urls')),
         path('folders/', include('apps.folders.urls')),
+        path('sync/', include('apps.sync.urls')),
         path('classification/', include('apps.classifier.urls')),
     ])),
 ]

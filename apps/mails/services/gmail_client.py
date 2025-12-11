@@ -4,6 +4,7 @@ Gmail API 클라이언트
 import base64
 import time
 from datetime import datetime, timedelta
+from email.utils import parseaddr
 
 import requests
 from django.conf import settings
@@ -48,7 +49,7 @@ class GmailAPIClient:
         data = {
             'client_id': settings.GOOGLE_CLIENT_ID,
             'client_secret': settings.GOOGLE_CLIENT_SECRET,
-            'refresh_token': self.user.get_gmail_refresh_token(),
+            'refresh_token': self.user.gmail_refresh_token,
             'grant_type': 'refresh_token',
         }
 
@@ -62,7 +63,7 @@ class GmailAPIClient:
             self.user.gmail_token_expires_at = datetime.now() + timedelta(
                 seconds=token_data.get('expires_in', 3600)
             )
-            self.user.save(update_fields=['gmail_access_token', 'gmail_token_expires_at'])
+            self.user.save(update_fields=['_gmail_access_token', 'gmail_token_expires_at'])
 
         except requests.exceptions.RequestException as e:
             raise ValidationError({
@@ -73,7 +74,7 @@ class GmailAPIClient:
     def _get_headers(self):
         """API 요청 헤더"""
         return {
-            'Authorization': f'Bearer {self.user.get_gmail_access_token()}',
+            'Authorization': f'Bearer {self.user.gmail_access_token}',
             'Content-Type': 'application/json',
         }
 
@@ -216,3 +217,138 @@ class GmailAPIClient:
 
         response = self._request('GET', '/history', params=params)
         return response.json()
+
+    def get_profile(self) -> dict:
+        """
+        Gmail 프로필 조회 (historyId 포함)
+
+        Returns:
+            dict: {
+                'emailAddress': str,
+                'messagesTotal': int,
+                'threadsTotal': int,
+                'historyId': str
+            }
+        """
+        response = self._request('GET', '/profile')
+        return response.json()
+
+    def parse_message(self, message: dict) -> dict:
+        """
+        Gmail 메시지를 파싱하여 Mail 모델에 저장할 형태로 변환
+
+        Args:
+            message: Gmail API의 messages.get 응답
+
+        Returns:
+            dict: 파싱된 메일 데이터
+        """
+        headers = {h['name'].lower(): h['value'] for h in message.get('payload', {}).get('headers', [])}
+
+        # 발신자 파싱
+        sender_raw = headers.get('from', '')
+        sender_name, sender_email = parseaddr(sender_raw)
+        sender = sender_raw if sender_raw else 'Unknown'
+
+        # 수신자 파싱
+        recipients = []
+        for recipient_type in ['to', 'cc', 'bcc']:
+            recipient_header = headers.get(recipient_type, '')
+            if recipient_header:
+                for addr in recipient_header.split(','):
+                    name, email = parseaddr(addr.strip())
+                    if email:
+                        recipients.append({
+                            'type': recipient_type,
+                            'email': email,
+                            'name': name or email
+                        })
+
+        # 본문 추출
+        body_html, body_text = self._extract_body(message.get('payload', {}))
+
+        # 첨부파일 메타데이터 추출
+        attachments = self._extract_attachments(message.get('payload', {}))
+
+        # 수신 시간 파싱 (internalDate는 밀리초 단위)
+        internal_date = int(message.get('internalDate', 0))
+        received_at = datetime.fromtimestamp(internal_date / 1000)
+
+        return {
+            'gmail_id': message.get('id'),
+            'thread_id': message.get('threadId'),
+            'subject': headers.get('subject', '(제목 없음)'),
+            'sender': sender,
+            'sender_email': sender_email or sender,
+            'recipients': recipients,
+            'snippet': message.get('snippet', ''),
+            'body_html': body_html or body_text or '',
+            'attachments': attachments,
+            'has_attachments': len(attachments) > 0,
+            'is_read': 'UNREAD' not in message.get('labelIds', []),
+            'is_starred': 'STARRED' in message.get('labelIds', []),
+            'received_at': received_at,
+            'history_id': message.get('historyId'),
+        }
+
+    def _extract_body(self, payload: dict) -> tuple:
+        """
+        메일 본문 추출 (HTML 우선, 없으면 plain text)
+
+        Args:
+            payload: Gmail message payload
+
+        Returns:
+            tuple: (body_html, body_text)
+        """
+        body_html = ''
+        body_text = ''
+
+        def extract_from_part(part):
+            nonlocal body_html, body_text
+            mime_type = part.get('mimeType', '')
+            body_data = part.get('body', {}).get('data', '')
+
+            if body_data:
+                decoded = base64.urlsafe_b64decode(body_data).decode('utf-8', errors='ignore')
+                if mime_type == 'text/html':
+                    body_html = decoded
+                elif mime_type == 'text/plain':
+                    body_text = decoded
+
+            # multipart 처리
+            for sub_part in part.get('parts', []):
+                extract_from_part(sub_part)
+
+        extract_from_part(payload)
+        return body_html, body_text
+
+    def _extract_attachments(self, payload: dict) -> list:
+        """
+        첨부파일 메타데이터 추출
+
+        Args:
+            payload: Gmail message payload
+
+        Returns:
+            list: 첨부파일 목록
+        """
+        attachments = []
+
+        def extract_from_part(part):
+            filename = part.get('filename', '')
+            attachment_id = part.get('body', {}).get('attachmentId')
+
+            if filename and attachment_id:
+                attachments.append({
+                    'id': attachment_id,
+                    'name': filename,
+                    'size': part.get('body', {}).get('size', 0),
+                    'mimeType': part.get('mimeType', 'application/octet-stream'),
+                })
+
+            for sub_part in part.get('parts', []):
+                extract_from_part(sub_part)
+
+        extract_from_part(payload)
+        return attachments
