@@ -1,0 +1,33 @@
+# Django Core
+Django>=5.0,<5.1
+djangorestframework>=3.14
+drf-spectacular>=0.27
+
+# CORS
+django-cors-headers>=4.3
+
+# JWT Authentication
+djangorestframework-simplejwt>=5.3
+
+# Google APIs
+google-auth>=2.25
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2
+google-api-python-client>=2.111
+
+# LangChain & AI
+langchain>=0.1
+langchain-google-genai>=1.0
+
+# Cryptography
+cryptography>=41.0
+
+# Environment Variables
+python-dotenv>=1.0
+
+# Production Server
+gunicorn>=21.2
+
+# Testing
+pytest>=7.4
+pytest-django>=4.7

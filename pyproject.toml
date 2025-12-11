@@ -1,0 +1,56 @@
+[project]
+name = "pigeon-be"
+version = "0.1.0"
+description = "Pigeon - AI 메일 폴더링 시스템 Backend"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Django Core
+    "django>=5.0,<5.1",
+    "djangorestframework>=3.14",
+    "drf-spectacular>=0.27",
+
+    # CORS
+    "django-cors-headers>=4.3",
+
+    # JWT Authentication
+    "djangorestframework-simplejwt>=5.3",
+
+    # Google APIs
+    "google-auth>=2.25",
+    "google-auth-oauthlib>=1.2",
+    "google-auth-httplib2>=0.2",
+    "google-api-python-client>=2.111",
+
+    # LangChain & AI
+    "langchain>=0.1",
+    "langchain-google-genai>=1.0",
+
+    # Cryptography
+    "cryptography>=41.0",
+
+    # Environment Variables
+    "python-dotenv>=1.0",
+
+    # Production Server
+    "gunicorn>=21.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-django>=4.7",
+    "ruff>=0.1",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.development"
+python_files = ["test_*.py", "*_test.py"]
