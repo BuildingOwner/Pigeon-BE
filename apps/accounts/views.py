@@ -148,7 +148,9 @@ class GoogleCallbackView(APIView):
 
             # 9. FE callback으로 리다이렉트 (토큰 포함)
             import urllib.parse
-            fe_callback_url = 'http://localhost:3000/callback'
+            import os
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+            fe_callback_url = f'{frontend_url}/callback'
             params = urllib.parse.urlencode({
                 'access_token': jwt_access_token,
                 'refresh_token': jwt_refresh_token,
