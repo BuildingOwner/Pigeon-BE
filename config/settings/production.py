@@ -16,7 +16,12 @@ missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
 if missing_vars:
     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()]
+# Add common Railway domains
+ALLOWED_HOSTS.extend([
+    '.railway.app',
+    '.up.railway.app',
+])
 
 # Database - PostgreSQL via DATABASE_URL
 DATABASES = {
