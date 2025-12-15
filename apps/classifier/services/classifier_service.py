@@ -35,6 +35,7 @@ class ClassificationState:
         self.started_at = None
         self.completed_at = None
         self.error = None
+        self.provider = None  # 사용된 LLM 프로바이더 (gemini, openai)
 
     @classmethod
     def create(cls, user_id: int) -> 'ClassificationState':
@@ -100,6 +101,7 @@ class ClassificationState:
         return {
             'classification_id': self.classification_id,
             'state': self.state,
+            'provider': self.provider,
             'results': self.results,
             'summary': {
                 'total': self.total,
@@ -206,6 +208,9 @@ class ClassifierService:
             from apps.accounts.models import User
             self.user = User.objects.get(id=user_id)
 
+            # 스레드에서 LLM 클라이언트 재생성
+            self.llm_client = LLMClient()
+
             mails = Mail.objects.filter(
                 user=self.user,
                 id__in=mail_ids,
@@ -217,6 +222,9 @@ class ClassifierService:
             if not state:
                 logger.error(f"Classification state not found: {classification_id}")
                 return
+
+            # 사용 중인 LLM provider 설정
+            state.provider = self.llm_client.provider
 
             self._process_classification(mail_list, state)
         except Exception as e:
@@ -281,6 +289,8 @@ class ClassifierService:
 
         try:
             results = self.llm_client.classify_mails_batch(mails_data, existing_folders)
+            # 실제 사용된 provider 업데이트 (fallback 전환 시 반영)
+            state.provider = self.llm_client.provider
             mail_map = {mail.id: mail for mail in mails}
 
             for result in results:

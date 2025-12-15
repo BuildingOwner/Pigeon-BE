@@ -1,5 +1,5 @@
 """
-LLM API 클라이언트 (OpenAI GPT + Gemini 지원)
+LLM API 클라이언트 (Gemini 우선, OpenAI GPT 폴백)
 """
 import json
 import logging
@@ -15,50 +15,66 @@ logger = logging.getLogger(__name__)
 
 
 class LLMClient:
-    """LLM API 클라이언트 (GPT 우선, Gemini 폴백) - LangChain 통합"""
+    """LLM API 클라이언트 (Gemini 우선, GPT 폴백) - LangChain 통합"""
 
     def __init__(self):
-        self.llm = None
-        self.provider = None
+        self.primary_llm = None
+        self.fallback_llm = None
+        self.primary_provider = None
+        self.fallback_provider = None
 
-        # OpenAI API 키 확인 (우선)
-        openai_api_key = getattr(settings, 'OPENAI_API_KEY', None)
         google_api_key = getattr(settings, 'GOOGLE_API_KEY', None)
+        openai_api_key = getattr(settings, 'OPENAI_API_KEY', None)
 
-        if openai_api_key:
-            try:
-                from langchain_openai import ChatOpenAI
-                self.llm = ChatOpenAI(
-                    model="gpt-5-nano",
-                    api_key=openai_api_key,
-                    temperature=0.1,
-                    max_tokens=2048,
-                )
-                self.provider = 'openai'
-                logger.info("LLMClient initialized with OpenAI GPT (LangChain)")
-            except Exception as e:
-                logger.warning(f"Failed to initialize OpenAI: {e}")
-
-        # OpenAI 실패 시 Gemini로 폴백
-        if self.llm is None and google_api_key:
+        # Gemini 우선 초기화
+        if google_api_key:
             try:
                 from langchain_google_genai import ChatGoogleGenerativeAI
-                self.llm = ChatGoogleGenerativeAI(
-                    model="gemini-2.5-flash",
+                model = "gemini-2.5-flash"
+                self.primary_llm = ChatGoogleGenerativeAI(
+                    model=model,
                     google_api_key=google_api_key,
                     temperature=0.1,
                     max_tokens=2048,
                 )
-                self.provider = 'gemini'
-                logger.info("LLMClient initialized with Google Gemini (LangChain)")
+                self.primary_provider = model
+                logger.info("Primary LLM: Google Gemini (LangChain)")
             except Exception as e:
                 logger.warning(f"Failed to initialize Gemini: {e}")
 
-        if self.llm is None:
+        # OpenAI를 폴백으로 초기화
+        if openai_api_key:
+            try:
+                from langchain_openai import ChatOpenAI
+                model="gpt-5-nano"
+                self.fallback_llm = ChatOpenAI(
+                    model=model,
+                    api_key=openai_api_key,
+                    temperature=0.1,
+                    max_tokens=2048,
+                )
+                self.fallback_provider = model
+                logger.info("Fallback LLM: OpenAI GPT (LangChain)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenAI: {e}")
+
+        # Primary가 없으면 fallback을 primary로 승격
+        if self.primary_llm is None and self.fallback_llm is not None:
+            self.primary_llm = self.fallback_llm
+            self.primary_provider = self.fallback_provider
+            self.fallback_llm = None
+            self.fallback_provider = None
+            logger.info(f"Promoted {self.primary_provider} to primary (no Gemini available)")
+
+        if self.primary_llm is None:
             raise ValidationError({
                 'code': 'LLM_NOT_CONFIGURED',
-                'message': 'OPENAI_API_KEY 또는 GOOGLE_API_KEY가 설정되지 않았습니다.'
+                'message': 'GOOGLE_API_KEY 또는 OPENAI_API_KEY가 설정되지 않았습니다.'
             })
+
+        # 호환성을 위한 속성
+        self.llm = self.primary_llm
+        self.provider = self.primary_provider
 
     def classify_mail(self, mail_data: dict, existing_folders: list) -> dict:
         """
@@ -107,36 +123,65 @@ class LLMClient:
                 'message': f'AI 배치 분류 실패: {str(e)}'
             })
 
-    def _invoke_with_retry(self, prompt: str, max_retries: int = 3) -> str:
-        """LLM 호출 (재시도 포함, 지수 백오프)"""
+    def _invoke_with_retry(self, prompt: str, max_retries: int = 2) -> str:
+        """LLM 호출 (재시도 포함, 폴백 지원)"""
         last_error = None
 
+        # Primary LLM 시도
         for attempt in range(max_retries):
             try:
-                return self._invoke_llm(prompt)
+                result = self._invoke_llm(prompt, self.primary_llm, self.primary_provider)
+                self.provider = self.primary_provider  # 실제 사용된 provider 기록
+                return result
             except Exception as e:
                 last_error = e
                 error_str = str(e).lower()
-                logger.warning(f"LLM invoke attempt {attempt + 1} failed ({self.provider}): {e}")
+                logger.warning(f"Primary LLM ({self.primary_provider}) attempt {attempt + 1} failed: {e}")
 
-                # Rate limit 에러면 더 긴 대기
-                if '429' in error_str or 'rate' in error_str or 'resource_exhausted' in error_str:
-                    wait_time = (2 ** attempt) * 5  # 5초, 10초, 20초
-                    logger.info(f"Rate limited, waiting {wait_time} seconds...")
+                # 429, rate limit, 연결 에러 체크
+                is_retriable = (
+                    '429' in error_str or
+                    'rate' in error_str or
+                    'resource_exhausted' in error_str or
+                    'quota' in error_str or
+                    'connection' in error_str or
+                    'timeout' in error_str
+                )
+
+                if is_retriable:
+                    wait_time = (2 ** attempt) * 2  # 2초, 4초
+                    logger.info(f"Retriable error, waiting {wait_time} seconds...")
                     time.sleep(wait_time)
                 else:
-                    # 일반 에러는 짧은 대기
-                    time.sleep(2 ** attempt)  # 1초, 2초, 4초
+                    time.sleep(1)
+
+        # Fallback LLM 시도
+        if self.fallback_llm is not None:
+            logger.info(f"Switching to fallback LLM ({self.fallback_provider})")
+            for attempt in range(max_retries):
+                try:
+                    result = self._invoke_llm(prompt, self.fallback_llm, self.fallback_provider)
+                    self.provider = self.fallback_provider  # 실제 사용된 provider 기록
+                    return result
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Fallback LLM ({self.fallback_provider}) attempt {attempt + 1} failed: {e}")
+                    time.sleep(2 ** attempt)
 
         raise last_error
 
-    def _invoke_llm(self, prompt: str) -> str:
+    def _invoke_llm(self, prompt: str, llm=None, provider: str = None) -> str:
         """LangChain 통합 LLM 호출"""
+        if llm is None:
+            llm = self.primary_llm
+            provider = self.primary_provider
+
         messages = [
             ("system", SYSTEM_PROMPT),
             ("human", prompt)
         ]
-        response = self.llm.invoke(messages)
+        logger.debug(f"Invoking {provider} LLM...")
+        response = llm.invoke(messages)
         return response.content
 
     def _format_folders(self, folders: list) -> str:

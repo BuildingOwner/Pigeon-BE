@@ -157,11 +157,19 @@ class ClassificationStopView(APIView):
                 'message': '접근 권한이 없습니다.'
             }, status=status.HTTP_403_FORBIDDEN)
 
-        if state.state != 'in_progress':
+        # 이미 완료/취소된 상태면 성공으로 처리
+        if state.state in ('completed', 'cancelled'):
+            return Response({
+                'status': 'success',
+                'message': '분류 작업이 이미 완료되었습니다.',
+                'data': state.to_dict()
+            })
+
+        if state.state not in ('in_progress', 'pending'):
             return Response({
                 'status': 'error',
                 'code': 'INVALID_STATE',
-                'message': '진행 중인 분류만 중단할 수 있습니다.'
+                'message': f'현재 상태({state.state})에서는 중단할 수 없습니다.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         state.cancel()
